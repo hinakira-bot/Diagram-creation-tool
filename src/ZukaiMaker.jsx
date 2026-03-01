@@ -20,6 +20,8 @@ const DIAGRAM_TYPES = [
   { id: "before_after", name: "ビフォーアフター", desc: "変化・改善の表現" },
   { id: "pyramid", name: "ピラミッド", desc: "階層・優先度" },
   { id: "cycle", name: "サイクル", desc: "循環プロセス" },
+  { id: "manga", name: "カラー漫画風", desc: "コマ割り・吹き出し・漫画表現" },
+  { id: "simple", name: "シンプル系", desc: "最小限の要素でわかりやすく" },
   { id: "free", name: "フリー", desc: "自由レイアウト" },
 ];
 
@@ -179,54 +181,248 @@ function MiniImageUpload({ label, value, onChange, onClear }) {
   );
 }
 
-function TextItemCard({ item, onToggle, onEdit, onDelete }) {
+// --- Inline editable field ---
+function InlineField({ item, onEdit, onDelete, compact = false, hideRole = false }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(item.content);
+  const handleSave = () => { onEdit(item.id, editValue); setEditing(false); };
 
-  const handleSave = () => {
-    onEdit(item.id, editValue);
-    setEditing(false);
-  };
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        {!hideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 truncate">{item.role}</span>}
+        <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+          className="flex-1 text-xs border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }} autoFocus />
+        <button onClick={handleSave} className="text-green-500 hover:text-green-700"><Check size={14} /></button>
+        <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+      </div>
+    );
+  }
 
   return (
-    <div className={`border rounded-lg p-3 transition-all ${item.visible ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60"}`}>
-      <div className="flex items-center gap-2 mb-1">
-        <button onClick={() => onToggle(item.id)} className="flex-shrink-0" title={item.visible ? "画像に反映する" : "画像に反映しない"}>
-          {item.visible ? (
-            <ToggleRight size={20} className="text-indigo-500" />
-          ) : (
-            <ToggleLeft size={20} className="text-gray-300" />
-          )}
-        </button>
-        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{item.role}</span>
-        <div className="flex-1" />
-        {!editing && (
-          <button onClick={() => { setEditValue(item.content); setEditing(true); }} className="text-gray-400 hover:text-indigo-500 transition-colors">
-            <Type size={14} />
-          </button>
-        )}
-        <button onClick={() => onDelete(item.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-          <Trash2 size={14} />
-        </button>
-      </div>
+    <div className="group flex items-start gap-1.5 hover:bg-white/60 rounded px-1 py-0.5 -mx-1 transition-colors">
+      {!hideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 pt-0.5 truncate">{item.role}</span>}
+      <span className={`flex-1 ${compact ? "text-xs text-gray-600" : "text-sm text-gray-800"} cursor-pointer`}
+        onClick={() => { setEditValue(item.content); setEditing(true); }}>
+        {item.content}
+      </span>
+      <button onClick={() => onDelete(item.id)}
+        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all flex-shrink-0 pt-0.5">
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
 
-      {editing ? (
-        <div className="flex gap-1 mt-1">
-          <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
-            className="flex-1 text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            onKeyDown={(e) => e.key === "Enter" && handleSave()} autoFocus />
-          <button onClick={handleSave} className="text-green-500 hover:text-green-700"><Check size={16} /></button>
-          <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-        </div>
-      ) : (
-        <p className={`text-sm mt-1 ${item.visible ? "text-gray-700" : "text-gray-400 line-through"}`}>
-          {item.content}
-        </p>
-      )}
+// --- Group related items together ---
+function groupTextItems(items) {
+  const singles = [];
+  const groups = {};
 
-      {!item.visible && (
-        <p className="text-xs text-orange-400 mt-1">※ 画像に反映しません</p>
-      )}
+  for (const item of items) {
+    const match = item.id.match(/^item(\d+)_/);
+    if (match) {
+      const num = match[1];
+      if (!groups[num]) groups[num] = [];
+      groups[num].push(item);
+    } else {
+      singles.push(item);
+    }
+  }
+
+  const result = [];
+  const headerItems = singles.filter((s) => ["title", "badge"].includes(s.id));
+  if (headerItems.length > 0) result.push({ type: "header", items: headerItems });
+
+  const sortedNums = Object.keys(groups).sort((a, b) => Number(a) - Number(b));
+  for (const num of sortedNums) {
+    result.push({ type: "group", num, items: groups[num] });
+  }
+
+  const footerItems = singles.filter((s) => !["title", "badge"].includes(s.id));
+  if (footerItems.length > 0) result.push({ type: "footer", items: footerItems });
+
+  return result;
+}
+
+// --- Diagram-type-specific visual config ---
+const DIAGRAM_VISUALS = {
+  flow: {
+    badge: (num, total) => <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">{"①②③④⑤⑥⑦⑧⑨⑩"[num - 1] || num}</span>,
+    connector: (isLast) => !isLast && <div className="flex justify-center py-0.5"><ChevronDown size={14} className="text-blue-300" /></div>,
+    accent: "border-blue-200 bg-blue-50/40",
+    borderL: "border-blue-200",
+  },
+  list: {
+    badge: (num) => <span className="w-5 h-5 rounded bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">{num}</span>,
+    connector: () => null,
+    accent: "border-emerald-200 bg-emerald-50/30",
+    borderL: "border-emerald-200",
+  },
+  compare: {
+    badge: (num, total) => {
+      const labels = ["A", "B", "C", "D"];
+      const colors = ["bg-rose-500", "bg-sky-500", "bg-amber-500", "bg-violet-500"];
+      return <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${colors[num - 1] || "bg-gray-500"} flex-shrink-0`}>{labels[num - 1] || num}</span>;
+    },
+    connector: (isLast, num, total) => !isLast && total === 2 && <div className="flex justify-center py-1"><span className="text-[10px] font-bold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">VS</span></div>,
+    accent: "border-gray-200 bg-gray-50/50",
+    borderL: "border-gray-300",
+  },
+  matrix: {
+    badge: (num) => {
+      const quadrants = ["↗", "↖", "↘", "↙"];
+      return <span className="w-5 h-5 rounded bg-violet-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">{quadrants[num - 1] || "•"}</span>;
+    },
+    connector: () => null,
+    accent: "border-violet-200 bg-violet-50/30",
+    borderL: "border-violet-200",
+  },
+  before_after: {
+    badge: (num) => {
+      const isB = num === 1;
+      return <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white flex-shrink-0 ${isB ? "bg-gray-500" : "bg-green-500"}`}>{isB ? "BEFORE" : "AFTER"}</span>;
+    },
+    connector: (isLast, num, total) => !isLast && num === 1 && <div className="flex justify-center py-1"><span className="text-lg text-orange-400">→</span></div>,
+    accent: "border-gray-200 bg-gray-50/50",
+    borderL: "border-orange-200",
+  },
+  pyramid: {
+    badge: (num, total) => {
+      const sizes = ["text-[11px]", "text-[10px]", "text-[10px]", "text-[9px]", "text-[9px]"];
+      const opacities = ["bg-amber-600", "bg-amber-500", "bg-amber-400", "bg-amber-300 text-amber-800", "bg-amber-200 text-amber-700"];
+      return <span className={`px-1.5 py-0.5 rounded ${opacities[num - 1] || "bg-amber-300"} ${sizes[num - 1] || "text-[9px]"} font-bold text-white flex-shrink-0`}>▲{num}</span>;
+    },
+    connector: () => null,
+    accent: "border-amber-200 bg-amber-50/30",
+    borderL: "border-amber-200",
+  },
+  cycle: {
+    badge: (num, total) => <span className="w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">{num}</span>,
+    connector: (isLast) => <div className="flex justify-center py-0.5"><span className="text-teal-300 text-xs">{isLast ? "↩" : "↓"}</span></div>,
+    accent: "border-teal-200 bg-teal-50/30",
+    borderL: "border-teal-200",
+  },
+  manga: {
+    badge: (num) => <span className="px-1.5 py-0.5 rounded text-[10px] font-black text-white bg-pink-500 flex-shrink-0 italic" style={{transform:"skewX(-6deg)"}}>コマ{num}</span>,
+    connector: (isLast) => !isLast && <div className="flex justify-center py-0.5"><span className="text-pink-300 text-sm font-bold">⚡</span></div>,
+    accent: "border-pink-200 bg-pink-50/30",
+    borderL: "border-pink-300",
+  },
+  simple: {
+    badge: (num) => <span className="w-5 h-5 rounded-full border-2 border-gray-400 text-gray-500 text-[10px] font-medium flex items-center justify-center flex-shrink-0">{num}</span>,
+    connector: () => null,
+    accent: "border-gray-100 bg-white",
+    borderL: "border-gray-200",
+  },
+  free: {
+    badge: (num) => <span className="w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0 mt-1.5"></span>,
+    connector: () => null,
+    accent: "border-gray-100 bg-white",
+    borderL: "border-gray-200",
+  },
+};
+
+// --- Diagram-aware text list renderer ---
+function DiagramTextList({ textItems, diagramType, onEdit, onDelete }) {
+  const grouped = groupTextItems(textItems);
+  const vis = DIAGRAM_VISUALS[diagramType] || DIAGRAM_VISUALS.free;
+  const contentGroups = grouped.filter((g) => g.type === "group");
+  const totalGroups = contentGroups.length;
+
+  return (
+    <div className="space-y-1.5">
+      {grouped.map((group, gIdx) => {
+        // === Header (Title / Badge) ===
+        if (group.type === "header") {
+          return (
+            <div key="header" className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+              {group.items.map((item) => (
+                <InlineField key={item.id} item={item} onEdit={onEdit} onDelete={onDelete}
+                  compact={item.id === "badge"} />
+              ))}
+            </div>
+          );
+        }
+
+        // === Footer (Summary / CTA / Custom) ===
+        if (group.type === "footer") {
+          return (
+            <div key="footer" className="bg-gray-50 border border-dashed border-gray-300 rounded-lg px-3 py-2 mt-1">
+              {group.items.map((item) => (
+                <InlineField key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} compact />
+              ))}
+            </div>
+          );
+        }
+
+        // === Content Groups (diagram-type-aware) ===
+        const num = Number(group.num);
+        const groupIdx = contentGroups.indexOf(group);
+        const isLast = groupIdx === totalGroups - 1;
+        const titleItem = group.items.find((i) => i.id.endsWith("_title"));
+        const otherItems = group.items.filter((i) => i !== titleItem);
+
+        // Special layout for compare: side-by-side pairs
+        if (diagramType === "compare" && totalGroups === 2) {
+          return (
+            <div key={`group-${group.num}`}>
+              <div className={`border rounded-lg p-2.5 ${vis.accent}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  {vis.badge(num, totalGroups)}
+                  {titleItem && (
+                    <span className="text-xs font-bold text-gray-800 truncate cursor-pointer"
+                      onClick={() => { /* handled by InlineField */ }}>
+                      {titleItem.content}
+                    </span>
+                  )}
+                </div>
+                <div className={`space-y-0.5 pl-2 border-l-2 ${vis.borderL} ml-1`}>
+                  {titleItem && <InlineField item={titleItem} onEdit={onEdit} onDelete={onDelete} compact hideRole />}
+                  {otherItems.map((item) => (
+                    <InlineField key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} compact />
+                  ))}
+                </div>
+              </div>
+              {vis.connector(isLast, num, totalGroups)}
+            </div>
+          );
+        }
+
+        // Special: Pyramid gets wider padding per level
+        const pyramidPadding = diagramType === "pyramid"
+          ? { paddingLeft: `${4 + (num - 1) * 6}px`, paddingRight: `${4 + (num - 1) * 6}px` }
+          : {};
+
+        // Special: Matrix uses 2-col grid
+        if (diagramType === "matrix" && totalGroups === 4) {
+          // Render in pairs: handled at the container level
+        }
+
+        return (
+          <div key={`group-${group.num}`}>
+            <div className={`border rounded-lg p-2.5 ${vis.accent} transition-all`} style={pyramidPadding}>
+              <div className="flex items-center gap-2 mb-1">
+                {vis.badge(num, totalGroups)}
+                {titleItem ? (
+                  <InlineField item={titleItem} onEdit={onEdit} onDelete={onDelete} hideRole />
+                ) : (
+                  <span className="text-xs text-gray-500">項目 {num}</span>
+                )}
+              </div>
+              {otherItems.length > 0 && (
+                <div className={`space-y-0.5 pl-2 border-l-2 ${vis.borderL} ml-1`}>
+                  {otherItems.map((item) => (
+                    <InlineField key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} compact />
+                  ))}
+                </div>
+              )}
+            </div>
+            {vis.connector(isLast, num, totalGroups)}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -249,7 +445,8 @@ export default function ZukaiMaker() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [textItems, setTextItems] = useState([]);
-  const [diagramType, setDiagramType] = useState("list");
+  const [diagramType, setDiagramType] = useState("free");
+  const [showTextInImage, setShowTextInImage] = useState(true);
 
   // --- Visual Settings ---
   const [taste, setTaste] = useState("clean_business");
@@ -342,9 +539,9 @@ export default function ZukaiMaker() {
         return;
       }
 
-      const result = await analyzeAndStructure(apiKey, sourceText);
+      const result = await analyzeAndStructure(apiKey, sourceText, diagramType);
       setTextItems(result.texts || []);
-      setDiagramType(result.diagramType || "list");
+      // diagramTypeはユーザーが事前選択済みなので上書きしない
 
       if (result.suggestedTaste) {
         setTaste(result.suggestedTaste);
@@ -372,9 +569,8 @@ export default function ZukaiMaker() {
       reader.onload = async (ev) => {
         try {
           const extracted = await extractTextFromFile(apiKey, ev.target.result, file.type);
-          const result = await analyzeAndStructure(apiKey, extracted);
+          const result = await analyzeAndStructure(apiKey, extracted, diagramType);
           setTextItems(result.texts || []);
-          setDiagramType(result.diagramType || "list");
           if (result.suggestedTaste) handleTasteChange(result.suggestedTaste);
           if (result.suggestedColor) setMainColor(result.suggestedColor);
         } catch (err) {
@@ -392,10 +588,6 @@ export default function ZukaiMaker() {
   };
 
   // --- Text Item Operations ---
-  const toggleTextItem = (id) => {
-    setTextItems((prev) => prev.map((item) => item.id === id ? { ...item, visible: !item.visible } : item));
-  };
-
   const editTextItem = (id, newContent) => {
     setTextItems((prev) => prev.map((item) => item.id === id ? { ...item, content: newContent } : item));
   };
@@ -420,15 +612,17 @@ export default function ZukaiMaker() {
     const currentBg = BG_TYPES.find((b) => b.id === bgType);
     const currentDiagram = DIAGRAM_TYPES.find((d) => d.id === diagramType);
 
-    const visibleTexts = textItems.filter((item) => item.visible);
-    if (visibleTexts.length === 0) return "";
+    if (textItems.length === 0) return "";
+
+    // When showTextInImage is OFF, don't include any text in the prompt
+    const activeTexts = showTextInImage ? textItems : [];
 
     // Separate title, badge, items, summary, etc.
-    const titleItem = visibleTexts.find((t) => t.id === "title");
-    const badgeItem = visibleTexts.find((t) => t.id === "badge");
-    const summaryItem = visibleTexts.find((t) => t.id === "summary");
-    const ctaItem = visibleTexts.find((t) => t.id === "cta");
-    const contentItems = visibleTexts.filter((t) => !["title", "badge", "summary", "cta"].includes(t.id));
+    const titleItem = activeTexts.find((t) => t.id === "title");
+    const badgeItem = activeTexts.find((t) => t.id === "badge");
+    const summaryItem = activeTexts.find((t) => t.id === "summary");
+    const ctaItem = activeTexts.find((t) => t.id === "cta");
+    const contentItems = activeTexts.filter((t) => !["title", "badge", "summary", "cta"].includes(t.id));
 
     let prompt = `CREATE A SINGLE DIAGRAM/INFOGRAPHIC IMAGE.
 
@@ -460,6 +654,8 @@ Layout the content as a ${currentDiagram?.id || "list"} diagram.
       before_after: "Split the image into LEFT (Before) and RIGHT (After) sections with a clear divider and arrow.",
       pyramid: "Arrange items in a PYRAMID/TRIANGLE from top (most important) to bottom (foundation).",
       cycle: "Arrange items in a CIRCULAR/CYCLE layout with arrows showing the continuous flow.",
+      manga: "Create a COLOR MANGA / COMIC PANEL style layout. Use comic panel frames (コマ割り) to separate each item. Include speech bubbles, action lines (集中線), sound effects (擬音), bold manga-style typography, and expressive character reactions. Use vivid colors and dynamic composition like a Japanese manga page. Each panel should visually tell part of the story.",
+      simple: "Create an extremely SIMPLE and MINIMAL layout. Use only essential elements: clean icons, short text, lots of whitespace. No decorative elements, no complex shapes. Focus on clarity and readability. Think 'less is more' - like a clean whiteboard sketch or a minimal presentation slide. Use a single accent color sparingly.",
       free: "Arrange items in a visually balanced FREE LAYOUT that best communicates the content.",
     };
     prompt += `${layoutInstructions[diagramType] || layoutInstructions.list}\n\n`;
@@ -536,15 +732,14 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
 `;
 
     return prompt;
-  }, [textItems, taste, mainColor, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2]);
+  }, [textItems, showTextInImage, taste, mainColor, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2]);
 
   // ============================================================
   // Image Generation
   // ============================================================
   const handleGenerate = async (overrideTaste = null) => {
     if (!apiKey) { setGenerateError("APIキーを設定してください"); return; }
-    const visibleTexts = textItems.filter((item) => item.visible);
-    if (visibleTexts.length === 0) { setGenerateError("表示するテキストがありません"); return; }
+    if (textItems.length === 0) { setGenerateError("テキストがありません。AI分析を実行してください"); return; }
 
     setIsGenerating(true);
     setGenerateError("");
@@ -669,6 +864,7 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
             <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
               <FileText size={16} className="text-indigo-500" />
               テキスト入力
+              <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">STEP 1</span>
             </h2>
 
             {/* Input method tabs */}
@@ -715,26 +911,16 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             )}
 
-            {/* Analyze button */}
-            <button onClick={handleAnalyze} disabled={isAnalyzing}
-              className="w-full mt-3 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors">
-              {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {isAnalyzing ? "AI分析中..." : "AI分析 & テキスト生成"}
-            </button>
-
-            {analysisError && (
-              <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                <AlertCircle size={12} /> {analysisError}
-              </p>
-            )}
           </div>
 
-          {/* Diagram Type */}
+          {/* Diagram Type - STEP 2: 先に選んでからAI分析 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+            <h2 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
               <Layout size={16} className="text-indigo-500" />
               図解タイプ
+              <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">STEP 2</span>
             </h2>
+            <p className="text-[10px] text-gray-400 mb-2">タイプに応じたテキスト要素をAIが生成します</p>
             <div className="grid grid-cols-2 gap-1.5">
               {DIAGRAM_TYPES.map((dt) => (
                 <button key={dt.id} onClick={() => setDiagramType(dt.id)}
@@ -746,6 +932,29 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
               ))}
             </div>
           </div>
+
+          {/* AI Analyze Button - STEP 3 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <h2 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <Sparkles size={16} className="text-indigo-500" />
+              AI構成
+              <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">STEP 3</span>
+            </h2>
+            <button onClick={handleAnalyze} disabled={isAnalyzing}
+              className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:from-gray-300 disabled:to-gray-400 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all">
+              {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {isAnalyzing ? "AI分析中..." : "AI分析 & テキスト生成"}
+            </button>
+            <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+              「{DIAGRAM_TYPES.find((d) => d.id === diagramType)?.name}」用のテキストを生成
+            </p>
+
+            {analysisError && (
+              <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                <AlertCircle size={12} /> {analysisError}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* ===== CENTER: Text Items ===== */}
@@ -756,9 +965,7 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
                 <Type size={16} className="text-indigo-500" />
                 テキスト一覧
                 {textItems.length > 0 && (
-                  <span className="text-xs font-normal text-gray-400">
-                    ({textItems.filter((t) => t.visible).length}/{textItems.length} ON)
-                  </span>
+                  <span className="text-xs font-normal text-gray-400">({textItems.length}件)</span>
                 )}
               </h2>
               <button onClick={addTextItem}
@@ -767,6 +974,23 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
               </button>
             </div>
 
+            {/* 全体ON/OFFスイッチ */}
+            {textItems.length > 0 && (
+              <div className={`flex items-center justify-between mb-3 p-2.5 rounded-lg border transition-colors ${showTextInImage ? "bg-indigo-50 border-indigo-200" : "bg-orange-50 border-orange-200"}`}>
+                <span className="text-xs font-medium text-gray-700">テキストを画像に反映</span>
+                <button onClick={() => setShowTextInImage(!showTextInImage)}>
+                  {showTextInImage ? (
+                    <ToggleRight size={24} className="text-indigo-500" />
+                  ) : (
+                    <ToggleLeft size={24} className="text-orange-400" />
+                  )}
+                </button>
+              </div>
+            )}
+            {textItems.length > 0 && !showTextInImage && (
+              <p className="text-xs text-orange-500 mb-2">※ OFFのため、テキストは画像に反映されません</p>
+            )}
+
             {textItems.length === 0 ? (
               <div className="text-center py-12 text-gray-300">
                 <Type size={32} className="mx-auto mb-2" />
@@ -774,10 +998,52 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
                 <p className="text-sm">「AI分析」を実行してください</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
-                {textItems.map((item) => (
-                  <TextItemCard key={item.id} item={item} onToggle={toggleTextItem} onEdit={editTextItem} onDelete={deleteTextItem} />
-                ))}
+              <div>
+                {/* Matrix: 2x2 grid wrapper */}
+                {diagramType === "matrix" && groupTextItems(textItems).filter((g) => g.type === "group").length === 4 ? (
+                  <div className="space-y-1.5">
+                    {/* Header */}
+                    {groupTextItems(textItems).filter((g) => g.type === "header").map((g) => (
+                      <div key="header" className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+                        {g.items.map((item) => (
+                          <InlineField key={item.id} item={item} onEdit={editTextItem} onDelete={deleteTextItem} compact={item.id === "badge"} />
+                        ))}
+                      </div>
+                    ))}
+                    {/* 2x2 Grid */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {groupTextItems(textItems).filter((g) => g.type === "group").map((group) => {
+                        const num = Number(group.num);
+                        const vis = DIAGRAM_VISUALS.matrix;
+                        const titleItem = group.items.find((i) => i.id.endsWith("_title"));
+                        const otherItems = group.items.filter((i) => i !== titleItem);
+                        return (
+                          <div key={`group-${group.num}`} className={`border rounded-lg p-2 ${vis.accent}`}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              {vis.badge(num, 4)}
+                              {titleItem && <InlineField item={titleItem} onEdit={editTextItem} onDelete={deleteTextItem} compact hideRole />}
+                            </div>
+                            <div className={`space-y-0.5 pl-1.5 border-l-2 ${vis.borderL}`}>
+                              {otherItems.map((item) => (
+                                <InlineField key={item.id} item={item} onEdit={editTextItem} onDelete={deleteTextItem} compact />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Footer */}
+                    {groupTextItems(textItems).filter((g) => g.type === "footer").map((g) => (
+                      <div key="footer" className="bg-gray-50 border border-dashed border-gray-300 rounded-lg px-3 py-2 mt-1">
+                        {g.items.map((item) => (
+                          <InlineField key={item.id} item={item} onEdit={editTextItem} onDelete={deleteTextItem} compact />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <DiagramTextList textItems={textItems} diagramType={diagramType} onEdit={editTextItem} onDelete={deleteTextItem} />
+                )}
               </div>
             )}
           </div>
@@ -1037,7 +1303,7 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
 
             {/* Generate Buttons */}
             <div className="space-y-2 mb-4">
-              <button onClick={() => handleGenerate()} disabled={isGenerating || textItems.filter((t) => t.visible).length === 0}
+              <button onClick={() => handleGenerate()} disabled={isGenerating || textItems.length === 0}
                 className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:from-gray-300 disabled:to-gray-400 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all">
                 {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 {isGenerating ? "生成中..." : "図解を生成"}
