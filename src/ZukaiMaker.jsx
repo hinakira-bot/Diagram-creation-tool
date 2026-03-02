@@ -144,6 +144,9 @@ function compressImage(dataUrl, maxSize = 512, quality = 0.7) {
   });
 }
 
+// --- Generic role words to hide from display ---
+const HIDDEN_ROLE_WORDS = ["要素", "説明", "補足"];
+
 // ============================================================
 // Sub-Components
 // ============================================================
@@ -187,10 +190,14 @@ function InlineField({ item, onEdit, onDelete, compact = false, hideRole = false
   const [editValue, setEditValue] = useState(item.content);
   const handleSave = () => { onEdit(item.id, editValue); setEditing(false); };
 
+  // Auto-hide generic role labels like "要素1", "説明2", "補足3"
+  const roleBase = item.role.replace(/\d+$/, "").trim();
+  const shouldHideRole = hideRole || HIDDEN_ROLE_WORDS.includes(roleBase);
+
   if (editing) {
     return (
       <div className="flex items-center gap-1">
-        {!hideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 truncate">{item.role}</span>}
+        {!shouldHideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 truncate">{item.role}</span>}
         <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
           className="flex-1 text-xs border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
           onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }} autoFocus />
@@ -202,7 +209,7 @@ function InlineField({ item, onEdit, onDelete, compact = false, hideRole = false
 
   return (
     <div className="group flex items-start gap-1.5 hover:bg-white/60 rounded px-1 py-0.5 -mx-1 transition-colors">
-      {!hideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 pt-0.5 truncate">{item.role}</span>}
+      {!shouldHideRole && <span className="text-[10px] text-gray-400 w-10 flex-shrink-0 pt-0.5 truncate">{item.role}</span>}
       <span className={`flex-1 ${compact ? "text-xs text-gray-600" : "text-sm text-gray-800"} cursor-pointer`}
         onClick={() => { setEditValue(item.content); setEditing(true); }}>
         {item.content}
@@ -475,6 +482,10 @@ export default function ZukaiMaker() {
   const [contentRef1, setContentRef1] = useState(() => localStorage.getItem("zukai_content_ref1") || "");
   const [contentRef2, setContentRef2] = useState(() => localStorage.getItem("zukai_content_ref2") || "");
 
+  // --- Must-Use Image ---
+  const [mustUseImage, setMustUseImage] = useState(() => localStorage.getItem("zukai_must_use_image") || "");
+  const [showMustUseSection, setShowMustUseSection] = useState(false);
+
   // --- Output ---
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState([]);
@@ -498,6 +509,7 @@ export default function ZukaiMaker() {
   useEffect(() => { if (layoutRef) localStorage.setItem("zukai_layout_ref", layoutRef); else localStorage.removeItem("zukai_layout_ref"); }, [layoutRef]);
   useEffect(() => { if (contentRef1) localStorage.setItem("zukai_content_ref1", contentRef1); else localStorage.removeItem("zukai_content_ref1"); }, [contentRef1]);
   useEffect(() => { if (contentRef2) localStorage.setItem("zukai_content_ref2", contentRef2); else localStorage.removeItem("zukai_content_ref2"); }, [contentRef2]);
+  useEffect(() => { if (mustUseImage) localStorage.setItem("zukai_must_use_image", mustUseImage); else localStorage.removeItem("zukai_must_use_image"); }, [mustUseImage]);
 
   // --- Taste change -> update main color ---
   const handleTasteChange = (tasteId) => {
@@ -721,6 +733,17 @@ Layout the content as a ${currentDiagram?.id || "list"} diagram.
 I have uploaded reference image(s). Match the visual style, color palette, composition, and artistic technique shown in the reference(s).\n`;
     }
 
+    // Must-use image
+    if (mustUseImage) {
+      prompt += `\n=== MUST-USE IMAGE (CRITICAL) ===
+I have uploaded a product/service image that MUST be prominently displayed in the diagram.
+- This image MUST appear clearly and prominently in the generated diagram
+- Do NOT modify, distort, or obscure this image
+- Integrate it naturally as a key visual element of the diagram layout
+- The image should be easily recognizable and visually prominent
+- Position it where it has the most visual impact within the diagram\n`;
+    }
+
     prompt += `
 === CRITICAL RULES ===
 1. ALL text must be rendered in the image EXACTLY as provided. Do NOT omit, change, or summarize any text.
@@ -732,7 +755,7 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
 `;
 
     return prompt;
-  }, [textItems, showTextInImage, taste, mainColor, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2]);
+  }, [textItems, showTextInImage, taste, mainColor, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2, mustUseImage]);
 
   // ============================================================
   // Image Generation
@@ -755,6 +778,7 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
       if (contentRef1) refImages.push(contentRef1);
       if (contentRef2) refImages.push(contentRef2);
       if (useCharacter && charSource === "upload" && charImage) refImages.push(charImage);
+      if (mustUseImage) refImages.push(mustUseImage);
 
       let imageDataUrl;
       if (refImages.length > 0) {
@@ -1290,6 +1314,32 @@ I have uploaded reference image(s). Match the visual style, color palette, compo
                     <MiniImageUpload label="コンテンツ2" value={contentRef2} onChange={setContentRef2} onClear={() => setContentRef2("")} />
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Must-Use Image (Collapsible) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <button onClick={() => setShowMustUseSection(!showMustUseSection)}
+              className="w-full px-4 py-3 flex items-center justify-between text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors rounded-xl">
+              <span className="flex items-center gap-2">
+                <ImageIcon size={16} className="text-orange-500" />
+                必須画像（商品・サービス）
+                {mustUseImage && <span className="text-xs font-normal text-green-500 bg-green-50 px-1.5 py-0.5 rounded">設定済</span>}
+              </span>
+              {showMustUseSection ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showMustUseSection && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+                <p className="text-[10px] text-gray-400">図解に必ず表示したい画像（商品写真・サービス画像など）を設定できます</p>
+                <MiniImageUpload label="必須画像をアップロード" value={mustUseImage}
+                  onChange={setMustUseImage} onClear={() => setMustUseImage("")} />
+                {mustUseImage && (
+                  <p className="text-[10px] text-orange-500 flex items-center gap-1">
+                    <AlertCircle size={10} />
+                    この画像は生成される図解に必ず表示されます
+                  </p>
+                )}
               </div>
             )}
           </div>
