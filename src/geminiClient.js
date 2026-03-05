@@ -157,49 +157,37 @@ Respond ONLY with valid JSON:
 }
 
 // --- Text Generation from URL ---
+
+function extractTextFromHtml(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+  return (doc.querySelector("article") || doc.body).textContent
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 8000);
+}
+
 export async function fetchAndAnalyze(apiKey, url) {
-  // まずCORSプロキシ経由でHTML取得を試みる
-  const corsProxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  ];
-
-  let htmlText = "";
-  for (const proxy of corsProxies) {
-    try {
-      const res = await fetch(proxy, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        htmlText = await res.text();
-        break;
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-
-  // CORSプロキシで取得できた場合はDOMParserでテキスト抽出
-  if (htmlText) {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, "text/html");
-      ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
-        doc.querySelectorAll(tag).forEach((el) => el.remove());
-      });
-
-      const articleText = (doc.querySelector("article") || doc.body).textContent
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 8000);
-
+  // 方法1: 自前のAPI Route経由でHTML取得（CORS問題なし、最も信頼性が高い）
+  try {
+    const res = await fetch(`/api/fetch-url?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const articleText = extractTextFromHtml(html);
       if (articleText.length > 50) {
         return articleText;
       }
-    } catch (e) {
-      // DOM解析に失敗した場合はGemini APIにフォールバック
     }
+  } catch (e) {
+    console.warn("API route fetch failed:", e.message);
   }
 
-  // フォールバック: Gemini APIのGoogle Searchグラウンディングでページ内容を取得
+  // 方法2: Gemini APIのGoogle Searchグラウンディングでページ内容を取得
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
@@ -222,7 +210,30 @@ export async function fetchAndAnalyze(apiKey, url) {
       return extractedText;
     }
   } catch (e) {
-    // googleSearchも失敗した場合は下のエラーに進む
+    console.warn("Gemini Google Search grounding failed:", e.message);
+  }
+
+  // 方法3: Gemini APIにURLを直接渡して内容を推測させる（Google Searchなし）
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: `以下のURLのページ内容について知っていることを教えてください。図解を作るために使うので、主要なポイントを構造的にまとめてください。\n\nURL: ${url}` },
+          ],
+        },
+      ],
+    });
+
+    const extractedText = response.text?.trim();
+    if (extractedText && extractedText.length > 50) {
+      return extractedText;
+    }
+  } catch (e) {
+    console.warn("Gemini direct fallback also failed:", e.message);
   }
 
   throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
