@@ -158,10 +158,36 @@ Respond ONLY with valid JSON:
 
 // --- Text Generation from URL ---
 export async function fetchAndAnalyze(apiKey, url) {
-  // まずCORSプロキシ経由でHTML取得を試みる
+  // 方法1: Gemini APIのGoogle Searchグラウンディングでページ内容を取得（最も信頼性が高い）
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-05-20",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: `以下のURLのWebページの本文テキストを抽出してください。広告やナビゲーションは除外し、記事の本文内容のみをそのまま返してください。余計な説明は不要です。テキストのみ返してください。\n\nURL: ${url}` },
+          ],
+        },
+      ],
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    });
+
+    const extractedText = response.text?.trim();
+    if (extractedText && extractedText.length > 50) {
+      return extractedText;
+    }
+  } catch (e) {
+    // Google Searchグラウンディング失敗時はCORSプロキシにフォールバック
+  }
+
+  // 方法2: CORSプロキシ経由でHTML取得を試みる
   const corsProxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
 
   let htmlText = "";
@@ -195,26 +221,23 @@ export async function fetchAndAnalyze(apiKey, url) {
         return articleText;
       }
     } catch (e) {
-      // DOM解析に失敗した場合はGemini APIにフォールバック
+      // DOM解析に失敗した場合はエラーに進む
     }
   }
 
-  // フォールバック: Gemini APIのGoogle Searchグラウンディングでページ内容を取得
+  // 方法3: Gemini APIにURLを直接渡して内容を推測させる（Google Searchなし）
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash-preview-05-20",
       contents: [
         {
           role: "user",
           parts: [
-            { text: `以下のURLのWebページの本文テキストを抽出してください。広告やナビゲーションは除外し、記事の本文内容のみをそのまま返してください。余計な説明は不要です。テキストのみ返してください。\n\nURL: ${url}` },
+            { text: `以下のURLのページ内容について知っていることを教えてください。図解を作るために使うので、主要なポイントを構造的にまとめてください。\n\nURL: ${url}` },
           ],
         },
       ],
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
     });
 
     const extractedText = response.text?.trim();
@@ -222,7 +245,7 @@ export async function fetchAndAnalyze(apiKey, url) {
       return extractedText;
     }
   } catch (e) {
-    // googleSearchも失敗した場合は下のエラーに進む
+    // 最終フォールバックも失敗
   }
 
   throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
