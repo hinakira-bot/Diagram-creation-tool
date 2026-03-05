@@ -199,29 +199,33 @@ export async function fetchAndAnalyze(apiKey, url) {
     }
   }
 
-  // フォールバック: Gemini APIのURL Contextツールでページ内容を取得
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: `以下のURLのWebページの本文テキストを抽出してください。広告やナビゲーションは除外し、記事本文のみを返してください。テキストのみ返してください。\n\nURL: ${url}` },
-        ],
+  // フォールバック: Gemini APIのGoogle Searchグラウンディングでページ内容を取得
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: `以下のURLのWebページの本文テキストを抽出してください。広告やナビゲーションは除外し、記事の本文内容のみをそのまま返してください。余計な説明は不要です。テキストのみ返してください。\n\nURL: ${url}` },
+          ],
+        },
+      ],
+      config: {
+        tools: [{ googleSearch: {} }],
       },
-    ],
-    config: {
-      tools: [{ urlContext: {} }],
-    },
-  });
+    });
 
-  const extractedText = response.text?.trim();
-  if (!extractedText) {
-    throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
+    const extractedText = response.text?.trim();
+    if (extractedText && extractedText.length > 50) {
+      return extractedText;
+    }
+  } catch (e) {
+    // googleSearchも失敗した場合は下のエラーに進む
   }
 
-  return extractedText;
+  throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
 }
 
 // --- Text Generation from File ---
