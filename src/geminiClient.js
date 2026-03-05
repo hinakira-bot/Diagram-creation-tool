@@ -162,7 +162,7 @@ export async function fetchAndAnalyze(apiKey, url) {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-05-20",
+      model: "gemini-3-flash-preview",
       contents: [
         {
           role: "user",
@@ -181,7 +181,7 @@ export async function fetchAndAnalyze(apiKey, url) {
       return extractedText;
     }
   } catch (e) {
-    // Google Searchグラウンディング失敗時はCORSプロキシにフォールバック
+    console.warn("Gemini Google Search grounding failed, falling back to CORS proxy:", e.message);
   }
 
   // 方法2: CORSプロキシ経由でHTML取得を試みる
@@ -229,7 +229,7 @@ export async function fetchAndAnalyze(apiKey, url) {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-05-20",
+      model: "gemini-3-flash-preview",
       contents: [
         {
           role: "user",
@@ -245,7 +245,7 @@ export async function fetchAndAnalyze(apiKey, url) {
       return extractedText;
     }
   } catch (e) {
-    // 最終フォールバックも失敗
+    console.warn("Gemini direct fallback also failed:", e.message);
   }
 
   throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
