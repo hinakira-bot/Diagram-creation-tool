@@ -157,8 +157,37 @@ Respond ONLY with valid JSON:
 }
 
 // --- Text Generation from URL ---
+
+function extractTextFromHtml(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
+    doc.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+  return (doc.querySelector("article") || doc.body).textContent
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 8000);
+}
+
 export async function fetchAndAnalyze(apiKey, url) {
-  // 方法1: Gemini APIのGoogle Searchグラウンディングでページ内容を取得（最も信頼性が高い）
+  // 方法1: 自前のAPI Route経由でHTML取得（CORS問題なし、最も信頼性が高い）
+  try {
+    const res = await fetch(`/api/fetch-url?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const articleText = extractTextFromHtml(html);
+      if (articleText.length > 50) {
+        return articleText;
+      }
+    }
+  } catch (e) {
+    console.warn("API route fetch failed:", e.message);
+  }
+
+  // 方法2: Gemini APIのGoogle Searchグラウンディングでページ内容を取得
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
@@ -181,48 +210,7 @@ export async function fetchAndAnalyze(apiKey, url) {
       return extractedText;
     }
   } catch (e) {
-    console.warn("Gemini Google Search grounding failed, falling back to CORS proxy:", e.message);
-  }
-
-  // 方法2: CORSプロキシ経由でHTML取得を試みる
-  const corsProxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-  ];
-
-  let htmlText = "";
-  for (const proxy of corsProxies) {
-    try {
-      const res = await fetch(proxy, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        htmlText = await res.text();
-        break;
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-
-  // CORSプロキシで取得できた場合はDOMParserでテキスト抽出
-  if (htmlText) {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, "text/html");
-      ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
-        doc.querySelectorAll(tag).forEach((el) => el.remove());
-      });
-
-      const articleText = (doc.querySelector("article") || doc.body).textContent
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 8000);
-
-      if (articleText.length > 50) {
-        return articleText;
-      }
-    } catch (e) {
-      // DOM解析に失敗した場合はエラーに進む
-    }
+    console.warn("Gemini Google Search grounding failed:", e.message);
   }
 
   // 方法3: Gemini APIにURLを直接渡して内容を推測させる（Google Searchなし）
