@@ -158,6 +158,7 @@ Respond ONLY with valid JSON:
 
 // --- Text Generation from URL ---
 export async function fetchAndAnalyze(apiKey, url) {
+  // まずCORSプロキシ経由でHTML取得を試みる
   const corsProxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -166,7 +167,7 @@ export async function fetchAndAnalyze(apiKey, url) {
   let htmlText = "";
   for (const proxy of corsProxies) {
     try {
-      const res = await fetch(proxy);
+      const res = await fetch(proxy, { signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         htmlText = await res.text();
         break;
@@ -176,20 +177,48 @@ export async function fetchAndAnalyze(apiKey, url) {
     }
   }
 
-  if (!htmlText) throw new Error("URLからテキストを取得できませんでした");
+  // CORSプロキシで取得できた場合はDOMParserでテキスト抽出
+  if (htmlText) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, "text/html");
+      ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
+        doc.querySelectorAll(tag).forEach((el) => el.remove());
+      });
 
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(htmlText, "text/html");
-  ["script", "style", "nav", "header", "footer", "aside", "iframe"].forEach((tag) => {
-    doc.querySelectorAll(tag).forEach((el) => el.remove());
+      const articleText = (doc.querySelector("article") || doc.body).textContent
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 8000);
+
+      if (articleText.length > 50) {
+        return articleText;
+      }
+    } catch (e) {
+      // DOM解析に失敗した場合はGemini APIにフォールバック
+    }
+  }
+
+  // フォールバック: Gemini APIにURLを直接渡してテキスト抽出
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: `以下のURLのWebページの内容を読み取り、本文テキストを抽出してください。広告やナビゲーションは除外し、記事本文のみを返してください。テキストのみ返してください。\n\nURL: ${url}` },
+        ],
+      },
+    ],
   });
 
-  const articleText = (doc.querySelector("article") || doc.body).textContent
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 8000);
+  const extractedText = response.text?.trim();
+  if (!extractedText) {
+    throw new Error("URLからテキストを取得できませんでした。URLが正しいか確認してください。");
+  }
 
-  return articleText;
+  return extractedText;
 }
 
 // --- Text Generation from File ---
