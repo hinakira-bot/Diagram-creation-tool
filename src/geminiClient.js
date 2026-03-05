@@ -199,7 +199,7 @@ export async function fetchAndAnalyze(apiKey, url) {
     }
   }
 
-  // フォールバック: Gemini APIにURLを直接渡してテキスト抽出
+  // フォールバック: Gemini APIのURL Contextツールでページ内容を取得
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
@@ -207,10 +207,13 @@ export async function fetchAndAnalyze(apiKey, url) {
       {
         role: "user",
         parts: [
-          { text: `以下のURLのWebページの内容を読み取り、本文テキストを抽出してください。広告やナビゲーションは除外し、記事本文のみを返してください。テキストのみ返してください。\n\nURL: ${url}` },
+          { text: `以下のURLのWebページの本文テキストを抽出してください。広告やナビゲーションは除外し、記事本文のみを返してください。テキストのみ返してください。\n\nURL: ${url}` },
         ],
       },
     ],
+    config: {
+      tools: [{ urlContext: {} }],
+    },
   });
 
   const extractedText = response.text?.trim();
