@@ -4,13 +4,7 @@ import { Loader2, Lock, Sparkles } from "lucide-react";
 const STORAGE_KEY = "zukai_auth";
 
 export function isAuthenticated() {
-  try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!data?.expiresAt) return false;
-    return new Date(data.expiresAt) > new Date();
-  } catch {
-    return false;
-  }
+  return localStorage.getItem(STORAGE_KEY) === "true";
 }
 
 export default function PasswordGate({ onAuthenticated }) {
@@ -35,7 +29,7 @@ export default function PasswordGate({ onAuthenticated }) {
       const data = await res.json();
 
       if (data.valid) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ expiresAt: data.expiresAt }));
+        localStorage.setItem(STORAGE_KEY, "true");
         onAuthenticated();
       } else {
         setError("パスワードが正しくありません");
@@ -94,7 +88,7 @@ export default function PasswordGate({ onAuthenticated }) {
           </button>
 
           <p className="text-xs text-gray-400 text-center">
-            メルマガ登録者に毎月パスワードをお届けしています
+            パスワードは不定期に変更されます
           </p>
         </form>
       </div>
