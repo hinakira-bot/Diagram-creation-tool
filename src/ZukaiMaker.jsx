@@ -21,7 +21,7 @@ const DIAGRAM_TYPES = [
   { id: "pyramid", name: "ピラミッド", desc: "階層・優先度" },
   { id: "cycle", name: "サイクル", desc: "循環プロセス" },
   { id: "manga", name: "カラー漫画風", desc: "コマ割り・吹き出し・漫画表現" },
-  { id: "simple", name: "シンプル系", desc: "最小限の要素でわかりやすく" },
+  { id: "simple", name: "シンプル系", desc: "最小限でわかりやすく" },
   { id: "free", name: "フリー", desc: "自由レイアウト" },
 ];
 
@@ -84,6 +84,14 @@ const ASPECT_RATIOS = [
   { id: "9:16", name: "9:16", desc: "ストーリーズ" },
 ];
 
+const COLOR_PATTERNS = [
+  { id: "mono", name: "モノトーン", desc: "同系色の濃淡" },
+  { id: "complementary", name: "補色", desc: "反対色でメリハリ" },
+  { id: "triadic", name: "トライアド", desc: "3色で華やかに" },
+  { id: "analogous", name: "類似色", desc: "隣り合う色で調和" },
+  { id: "split_complementary", name: "スプリット", desc: "補色を2分割" },
+];
+
 const BG_TYPES = [
   { id: "white", name: "ホワイト", prompt: "clean white background" },
   { id: "solid", name: "単色", prompt: "solid color background using the main theme color (lightened)" },
@@ -124,6 +132,64 @@ function isLightColor(hex) {
   return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 > 128;
 }
 
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+}
+
+function hslToHex(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  const hue2rgb = (p, q, t) => { if (t < 0) t += 1; if (t > 1) t -= 1; if (t < 1/6) return p + (q - p) * 6 * t; if (t < 1/2) return q; if (t < 2/3) return p + (q - p) * (2/3 - t) * 6; return p; };
+  let r, g, b;
+  if (s === 0) { r = g = b = l; } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+  }
+  return `#${Math.round(r * 255).toString(16).padStart(2, "0")}${Math.round(g * 255).toString(16).padStart(2, "0")}${Math.round(b * 255).toString(16).padStart(2, "0")}`;
+}
+
+function generateColorPalette(hex, pattern) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return { main: hex, colors: [hex], description: "" };
+  const [h, s, l] = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  switch (pattern) {
+    case "complementary": {
+      const comp = hslToHex((h + 180) % 360, s, l);
+      return { main: hex, colors: [hex, comp, lightenColor(hex, 30), lightenColor(comp, 30)], description: `Main: ${hex}, Complementary accent: ${comp}, Light main: ${lightenColor(hex, 30)}, Light accent: ${lightenColor(comp, 30)}` };
+    }
+    case "triadic": {
+      const c1 = hslToHex((h + 120) % 360, s, l);
+      const c2 = hslToHex((h + 240) % 360, s, l);
+      return { main: hex, colors: [hex, c1, c2, lightenColor(hex, 30)], description: `Main: ${hex}, Triadic accent 1: ${c1}, Triadic accent 2: ${c2}, Light main: ${lightenColor(hex, 30)}` };
+    }
+    case "analogous": {
+      const c1 = hslToHex((h + 30) % 360, s, l);
+      const c2 = hslToHex((h + 330) % 360, s, l);
+      return { main: hex, colors: [hex, c1, c2, lightenColor(hex, 30)], description: `Main: ${hex}, Analogous warm: ${c1}, Analogous cool: ${c2}, Light main: ${lightenColor(hex, 30)}` };
+    }
+    case "split_complementary": {
+      const c1 = hslToHex((h + 150) % 360, s, l);
+      const c2 = hslToHex((h + 210) % 360, s, l);
+      return { main: hex, colors: [hex, c1, c2, lightenColor(hex, 30)], description: `Main: ${hex}, Split-comp accent 1: ${c1}, Split-comp accent 2: ${c2}, Light main: ${lightenColor(hex, 30)}` };
+    }
+    case "mono":
+    default:
+      return { main: hex, colors: [hex, lightenColor(hex, 40), darkenColor(hex, 30)], description: `Main: ${hex}, Light: ${lightenColor(hex, 40)}, Dark: ${darkenColor(hex, 30)}` };
+  }
+}
+
 function compressImage(dataUrl, maxSize = 512, quality = 0.7) {
   return new Promise((resolve) => {
     const img = new window.Image();
@@ -145,7 +211,7 @@ function compressImage(dataUrl, maxSize = 512, quality = 0.7) {
 }
 
 // --- Generic role words to hide from display ---
-const HIDDEN_ROLE_WORDS = ["要素", "説明", "補足"];
+const HIDDEN_ROLE_WORDS = ["要素", "項目", "説明", "補足"];
 
 // ============================================================
 // Sub-Components
@@ -458,6 +524,7 @@ export default function ZukaiMaker() {
   // --- Visual Settings ---
   const [taste, setTaste] = useState("clean_business");
   const [mainColor, setMainColor] = useState("#1E40AF");
+  const [colorPattern, setColorPattern] = useState("mono");
   const [fontStyle, setFontStyle] = useState("bold_gothic");
   const [titleDecoration, setTitleDecoration] = useState("bold_fill");
   const [textSize, setTextSize] = useState("lg");
@@ -636,15 +703,17 @@ export default function ZukaiMaker() {
     const ctaItem = activeTexts.find((t) => t.id === "cta");
     const contentItems = activeTexts.filter((t) => !["title", "badge", "summary", "cta"].includes(t.id));
 
+    const palette = generateColorPalette(mainColor, colorPattern);
+
     let prompt = `CREATE A SINGLE DIAGRAM/INFOGRAPHIC IMAGE.
 
 === IMAGE SPECIFICATIONS ===
 - Aspect ratio: ${aspectRatio}
 - Style: ${currentTaste?.atmosphere || "clean professional"}
 - Background: ${currentBg?.prompt || "white background"}
-- Main accent color: ${mainColor} (use for headers, borders, highlights, accent elements)
-- Secondary color: ${lightenColor(mainColor, 40)} (use for backgrounds, subtle elements)
-- Dark variant: ${darkenColor(mainColor, 30)} (use for text, strong elements)
+- Color palette (${COLOR_PATTERNS.find(p => p.id === colorPattern)?.name || "モノトーン"}): ${palette.description}
+- Use these colors strategically: main color for primary elements, accent colors for highlights, contrast, and visual variety
+- Ensure visual interest by using different palette colors for different sections/items
 
 === TYPOGRAPHY ===
 - Font style: ${currentFont?.prompt || "bold sans-serif"}
@@ -749,13 +818,13 @@ I have uploaded a product/service image that MUST be prominently displayed in th
 1. ALL text must be rendered in the image EXACTLY as provided. Do NOT omit, change, or summarize any text.
 2. Text must be clear, legible, and properly sized.
 3. The diagram must be visually appealing and professional.
-4. Use the specified main color (${mainColor}) prominently.
+4. Use the specified color palette prominently — distribute accent colors across the diagram for visual variety.
 5. Maintain proper visual hierarchy: title > content items > summary.
 6. Icons and visual elements should enhance understanding.
 `;
 
     return prompt;
-  }, [textItems, showTextInImage, taste, mainColor, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2, mustUseImage]);
+  }, [textItems, showTextInImage, taste, mainColor, colorPattern, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2, mustUseImage]);
 
   // ============================================================
   // Image Generation
@@ -944,7 +1013,7 @@ I have uploaded a product/service image that MUST be prominently displayed in th
               図解タイプ
               <span className="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">STEP 2</span>
             </h2>
-            <p className="text-[10px] text-gray-400 mb-2">タイプに応じたテキスト要素をAIが生成します</p>
+            <p className="text-[10px] text-gray-400 mb-2">タイプに応じたテキストをAIが生成します</p>
             <div className="grid grid-cols-2 gap-1.5">
               {DIAGRAM_TYPES.map((dt) => (
                 <button key={dt.id} onClick={() => setDiagramType(dt.id)}
@@ -1106,10 +1175,20 @@ I have uploaded a product/service image that MUST be prominently displayed in th
                 <input type="text" value={mainColor} onChange={(e) => setMainColor(e.target.value)}
                   className="w-24 text-xs border border-gray-200 rounded px-2 py-1 font-mono" />
                 <div className="flex gap-1 ml-2">
-                  <div className="w-6 h-6 rounded" style={{ backgroundColor: mainColor }} title="メイン" />
-                  <div className="w-6 h-6 rounded" style={{ backgroundColor: lightenColor(mainColor, 40) }} title="ライト" />
-                  <div className="w-6 h-6 rounded" style={{ backgroundColor: darkenColor(mainColor, 30) }} title="ダーク" />
+                  {generateColorPalette(mainColor, colorPattern).colors.map((c, i) => (
+                    <div key={i} className="w-6 h-6 rounded border border-gray-200" style={{ backgroundColor: c }} title={c} />
+                  ))}
                 </div>
+              </div>
+              <div className="flex gap-1 mt-2 flex-wrap">
+                {COLOR_PATTERNS.map((p) => (
+                  <button key={p.id} onClick={() => setColorPattern(p.id)}
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-colors border
+                      ${colorPattern === p.id ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-gray-100 text-gray-500 hover:bg-gray-50"}`}
+                    title={p.desc}>
+                    {p.name}
+                  </button>
+                ))}
               </div>
             </div>
 

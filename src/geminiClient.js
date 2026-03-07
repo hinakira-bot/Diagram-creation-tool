@@ -77,7 +77,7 @@ const DIAGRAM_SCHEMAS = {
     count: "3-6 panels",
   },
   simple: {
-    label: "シンプル系（最小限の要素）",
+    label: "シンプル系（最小限の構成）",
     fields: [
       { suffix: "point", role: "ポイント" },
     ],
@@ -87,10 +87,10 @@ const DIAGRAM_SCHEMAS = {
   free: {
     label: "フリーレイアウト（自由構成）",
     fields: [
-      { suffix: "element", role: "要素" },
+      { suffix: "element", role: "項目" },
       { suffix: "desc", role: "説明" },
     ],
-    example: '{ "id": "item1_element", "role": "要素1", "content": "中心テーマ" }, { "id": "item1_desc", "role": "説明1", "content": "詳細な説明文" }',
+    example: '{ "id": "item1_element", "role": "項目1", "content": "中心テーマ" }, { "id": "item1_desc", "role": "説明1", "content": "詳細な説明文" }',
     count: "3-7 elements",
   },
 };
@@ -133,7 +133,7 @@ Respond ONLY with valid JSON:
   "texts": [
     { "id": "title", "role": "タイトル", "content": "..." },
     { "id": "badge", "role": "バッジ", "content": "..." },
-    ${schema ? schema.example : '{ "id": "item1_element", "role": "要素1", "content": "..." }'},
+    ${schema ? schema.example : '{ "id": "item1_element", "role": "項目1", "content": "..." }'},
     ... more items ...
     { "id": "summary", "role": "まとめ", "content": "..." }
   ]
