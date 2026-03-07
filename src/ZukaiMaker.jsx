@@ -90,6 +90,35 @@ const COLOR_PATTERNS = [
   { id: "triadic", name: "トライアド", desc: "3色で華やかに" },
   { id: "analogous", name: "類似色", desc: "隣り合う色で調和" },
   { id: "split_complementary", name: "スプリット", desc: "補色を2分割" },
+  { id: "preset", name: "プリセット", desc: "厳選パレットから選択" },
+];
+
+const CURATED_PALETTES = [
+  // Warm & Trendy
+  { id: "sunset_glow", name: "サンセット", colors: ["#FF6B6B", "#FEC89A", "#FFD93D", "#6BCB77"], category: "warm" },
+  { id: "terracotta", name: "テラコッタ", colors: ["#E07A5F", "#3D405B", "#81B29A", "#F2CC8F"], category: "warm" },
+  { id: "coral_reef", name: "コーラルリーフ", colors: ["#FF7675", "#FDCB6E", "#6C5CE7", "#00CEC9"], category: "warm" },
+  { id: "autumn_mood", name: "オータム", colors: ["#D4A373", "#FAEDCD", "#FEFAE0", "#CCD5AE"], category: "warm" },
+  // Cool & Modern
+  { id: "ocean_breeze", name: "オーシャン", colors: ["#0077B6", "#00B4D8", "#90E0EF", "#CAF0F8"], category: "cool" },
+  { id: "midnight", name: "ミッドナイト", colors: ["#22223B", "#4A4E69", "#9A8C98", "#C9ADA7"], category: "cool" },
+  { id: "arctic", name: "アークティック", colors: ["#264653", "#2A9D8F", "#E9C46A", "#F4A261"], category: "cool" },
+  { id: "lavender_haze", name: "ラベンダー", colors: ["#7B2D8E", "#C77DFF", "#E0AAFF", "#F0E6FF"], category: "cool" },
+  // Pastel & Soft
+  { id: "cotton_candy", name: "コットンキャンディ", colors: ["#FFB5E8", "#FF9CEE", "#B5DEFF", "#97E8D3"], category: "pastel" },
+  { id: "macaron", name: "マカロン", colors: ["#F8C8DC", "#A8D8EA", "#AA96DA", "#FCBAD3"], category: "pastel" },
+  { id: "mint_fresh", name: "ミントフレッシュ", colors: ["#95E1D3", "#EAFFD0", "#FCE38A", "#F38181"], category: "pastel" },
+  { id: "sakura", name: "サクラ", colors: ["#FADCE6", "#F2A6B5", "#D4789C", "#8B5E83"], category: "pastel" },
+  // Bold & Vivid
+  { id: "neon_pop", name: "ネオンポップ", colors: ["#FF006E", "#8338EC", "#3A86FF", "#FFBE0B"], category: "bold" },
+  { id: "retro_pop", name: "レトロポップ", colors: ["#F94144", "#F8961E", "#43AA8B", "#577590"], category: "bold" },
+  { id: "electric", name: "エレクトリック", colors: ["#7400B8", "#5390D9", "#48BFE3", "#56CFE1"], category: "bold" },
+  { id: "tokyo_night", name: "トーキョーナイト", colors: ["#0D1B2A", "#1B263B", "#E63946", "#A8DADC"], category: "bold" },
+  // Business & Clean
+  { id: "corporate_blue", name: "コーポレート", colors: ["#1D3557", "#457B9D", "#A8DADC", "#F1FAEE"], category: "business" },
+  { id: "olive_chic", name: "オリーブシック", colors: ["#606C38", "#283618", "#FEFAE0", "#DDA15E"], category: "business" },
+  { id: "monochrome_plus", name: "モノクロ+", colors: ["#212529", "#495057", "#ADB5BD", "#E8B931"], category: "business" },
+  { id: "slate_rose", name: "スレートローズ", colors: ["#2B2D42", "#8D99AE", "#EDF2F4", "#EF233C"], category: "business" },
 ];
 
 const BG_TYPES = [
@@ -160,7 +189,16 @@ function hslToHex(h, s, l) {
   return `#${Math.round(r * 255).toString(16).padStart(2, "0")}${Math.round(g * 255).toString(16).padStart(2, "0")}${Math.round(b * 255).toString(16).padStart(2, "0")}`;
 }
 
-function generateColorPalette(hex, pattern) {
+function generateColorPalette(hex, pattern, presetId) {
+  // Preset mode: use curated palette directly
+  if (pattern === "preset" && presetId) {
+    const preset = CURATED_PALETTES.find(p => p.id === presetId);
+    if (preset) {
+      const c = preset.colors;
+      return { main: c[0], colors: c, description: `Curated palette "${preset.name}": Primary ${c[0]}, Secondary ${c[1]}, Accent ${c[2]}, Highlight ${c[3]} — use all 4 colors across the design for a cohesive yet vibrant look` };
+    }
+  }
+
   const rgb = hexToRgb(hex);
   if (!rgb) return { main: hex, colors: [hex], description: "" };
   const [h, s, l] = rgbToHsl(rgb.r, rgb.g, rgb.b);
@@ -525,6 +563,7 @@ export default function ZukaiMaker() {
   const [taste, setTaste] = useState("clean_business");
   const [mainColor, setMainColor] = useState("#1E40AF");
   const [colorPattern, setColorPattern] = useState("mono");
+  const [selectedPalette, setSelectedPalette] = useState("");
   const [fontStyle, setFontStyle] = useState("bold_gothic");
   const [titleDecoration, setTitleDecoration] = useState("bold_fill");
   const [textSize, setTextSize] = useState("lg");
@@ -703,7 +742,7 @@ export default function ZukaiMaker() {
     const ctaItem = activeTexts.find((t) => t.id === "cta");
     const contentItems = activeTexts.filter((t) => !["title", "badge", "summary", "cta"].includes(t.id));
 
-    const palette = generateColorPalette(mainColor, colorPattern);
+    const palette = generateColorPalette(mainColor, colorPattern, selectedPalette);
 
     let prompt = `CREATE A SINGLE DIAGRAM/INFOGRAPHIC IMAGE.
 
@@ -824,7 +863,7 @@ I have uploaded a product/service image that MUST be prominently displayed in th
 `;
 
     return prompt;
-  }, [textItems, showTextInImage, taste, mainColor, colorPattern, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2, mustUseImage]);
+  }, [textItems, showTextInImage, taste, mainColor, colorPattern, selectedPalette, fontStyle, titleDecoration, textSize, bgType, aspectRatio, diagramType, useCharacter, charSource, charDesc, charSize, charPosition, charExpression, useBubble, bubbleText, tasteRef1, tasteRef2, layoutRef, contentRef1, contentRef2, mustUseImage]);
 
   // ============================================================
   // Image Generation
@@ -1164,25 +1203,15 @@ I have uploaded a product/service image that MUST be prominently displayed in th
 
           {/* Color & Text Settings */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4">
-            {/* Main Color */}
+            {/* Color Palette */}
             <div>
               <h3 className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
-                <Palette size={14} /> メインカラー
+                <Palette size={14} /> カラーパレット
               </h3>
-              <div className="flex items-center gap-2">
-                <input type="color" value={mainColor} onChange={(e) => setMainColor(e.target.value)}
-                  className="w-10 h-8 rounded border border-gray-200 cursor-pointer" />
-                <input type="text" value={mainColor} onChange={(e) => setMainColor(e.target.value)}
-                  className="w-24 text-xs border border-gray-200 rounded px-2 py-1 font-mono" />
-                <div className="flex gap-1 ml-2">
-                  {generateColorPalette(mainColor, colorPattern).colors.map((c, i) => (
-                    <div key={i} className="w-6 h-6 rounded border border-gray-200" style={{ backgroundColor: c }} title={c} />
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-1 mt-2 flex-wrap">
+              {/* Pattern mode selector */}
+              <div className="flex gap-1 mb-2 flex-wrap">
                 {COLOR_PATTERNS.map((p) => (
-                  <button key={p.id} onClick={() => setColorPattern(p.id)}
+                  <button key={p.id} onClick={() => { setColorPattern(p.id); if (p.id !== "preset") setSelectedPalette(""); }}
                     className={`px-2 py-1 rounded-md text-[10px] font-medium transition-colors border
                       ${colorPattern === p.id ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-gray-100 text-gray-500 hover:bg-gray-50"}`}
                     title={p.desc}>
@@ -1190,6 +1219,63 @@ I have uploaded a product/service image that MUST be prominently displayed in th
                   </button>
                 ))}
               </div>
+
+              {/* Main color picker (for non-preset modes) */}
+              {colorPattern !== "preset" && (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={mainColor} onChange={(e) => setMainColor(e.target.value)}
+                    className="w-10 h-8 rounded border border-gray-200 cursor-pointer" />
+                  <input type="text" value={mainColor} onChange={(e) => setMainColor(e.target.value)}
+                    className="w-24 text-xs border border-gray-200 rounded px-2 py-1 font-mono" />
+                  <div className="flex gap-1 ml-2">
+                    {generateColorPalette(mainColor, colorPattern, selectedPalette).colors.map((c, i) => (
+                      <div key={i} className="w-6 h-6 rounded border border-gray-200" style={{ backgroundColor: c }} title={c} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Curated palette grid (for preset mode) */}
+              {colorPattern === "preset" && (
+                <div className="space-y-2">
+                  {["warm", "cool", "pastel", "bold", "business"].map((cat) => {
+                    const catNames = { warm: "ウォーム", cool: "クール", pastel: "パステル", bold: "ビビッド", business: "ビジネス" };
+                    const palettes = CURATED_PALETTES.filter(p => p.category === cat);
+                    return (
+                      <div key={cat}>
+                        <span className="text-[10px] text-gray-400 font-medium">{catNames[cat]}</span>
+                        <div className="grid grid-cols-2 gap-1.5 mt-1">
+                          {palettes.map((p) => (
+                            <button key={p.id}
+                              onClick={() => { setSelectedPalette(p.id); setMainColor(p.colors[0]); }}
+                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-colors text-left
+                                ${selectedPalette === p.id ? "border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200" : "border-gray-100 hover:border-gray-300 bg-white"}`}>
+                              <div className="flex gap-0.5 flex-shrink-0">
+                                {p.colors.map((c, i) => (
+                                  <div key={i} className="w-4 h-4 rounded-sm" style={{ backgroundColor: c }} />
+                                ))}
+                              </div>
+                              <span className="text-[10px] text-gray-600 truncate">{p.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Active palette preview */}
+                  {selectedPalette && (
+                    <div className="flex items-center gap-2 mt-2 p-2 bg-gray-50 rounded-lg">
+                      <span className="text-[10px] text-gray-500">選択中:</span>
+                      <div className="flex gap-1">
+                        {generateColorPalette(mainColor, colorPattern, selectedPalette).colors.map((c, i) => (
+                          <div key={i} className="w-7 h-7 rounded border border-gray-200" style={{ backgroundColor: c }} title={c} />
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-medium text-gray-700">{CURATED_PALETTES.find(p => p.id === selectedPalette)?.name}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Font Style */}
